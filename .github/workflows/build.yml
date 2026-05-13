@@ -96,8 +96,10 @@ jobs:
           NPROC=$(nproc 2>/dev/null || sysctl -n hw.logicalcpu)
           curl -fsSL https://ffmpeg.org/releases/ffmpeg-${{ env.FFMPEG_VERSION }}.tar.xz | tar xJ
           cd ffmpeg-${{ env.FFMPEG_VERSION }}
-          PKG_CONFIG_PATH=$(pwd)/../ffmpeg-build/lib/pkgconfig \
-          ./configure --prefix=$(pwd)/../ffmpeg-build ${{ env.FFMPEG_OPTS }}
+          export PKG_CONFIG_PATH="$(pwd)/../ffmpeg-build/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+          ./configure --prefix=$(pwd)/../ffmpeg-build \
+            --pkg-config-flags="--static" \
+            ${{ env.FFMPEG_OPTS }}
           make -j$NPROC install
 
       - name: Build native lib (Linux/macOS)
@@ -151,11 +153,12 @@ jobs:
         run: |
           curl -fsSL https://ffmpeg.org/releases/ffmpeg-${{ env.FFMPEG_VERSION }}.tar.xz | tar xJ
           cd ffmpeg-${{ env.FFMPEG_VERSION }}
-          PKG_CONFIG_PATH=$(pwd)/../ffmpeg-build/lib/pkgconfig \
+          export PKG_CONFIG_PATH="$(pwd)/../ffmpeg-build/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
           ./configure --prefix=$(pwd)/../ffmpeg-build \
             --toolchain=msvc \
             --target-os=mingw32 \
             --arch=x86_64 \
+            --pkg-config-flags="--static" \
             ${{ env.FFMPEG_OPTS }}
           make -j$(nproc) install
 
