@@ -32,6 +32,7 @@ target_include_directories(thumbnailer PRIVATE
     ${AVUTIL_INCLUDE_DIRS}
     ${SWSCALE_INCLUDE_DIRS}
     ${LIBWEBP_INCLUDE_DIRS}
+    $<$<BOOL:${FFMPEG_ROOT}>:${FFMPEG_ROOT}/include>
 )
 
 # Static link so the .so/.dylib/.dll is self-contained.
