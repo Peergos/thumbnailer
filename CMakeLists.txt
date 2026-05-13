@@ -35,6 +35,15 @@ target_include_directories(thumbnailer PRIVATE
 )
 
 # Static link so the .so/.dylib/.dll is self-contained.
+# LIBRARY_DIRS tells the linker where the .a files live (e.g. ffmpeg-build/lib).
+target_link_directories(thumbnailer PRIVATE
+    ${AVFORMAT_LIBRARY_DIRS}
+    ${AVCODEC_LIBRARY_DIRS}
+    ${AVUTIL_LIBRARY_DIRS}
+    ${SWSCALE_LIBRARY_DIRS}
+    ${LIBWEBP_LIBRARY_DIRS}
+)
+
 target_link_libraries(thumbnailer PRIVATE
     ${AVFORMAT_STATIC_LIBRARIES}
     ${AVCODEC_STATIC_LIBRARIES}
