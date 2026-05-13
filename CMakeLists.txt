@@ -66,3 +66,10 @@ if(APPLE)
         LINK_FLAGS "-undefined dynamic_lookup"
     )
 endif()
+
+# Bind all global symbols locally within the .so so that PC-relative
+# relocations in FFmpeg's assembly code (R_X86_64_PC32, R_AARCH64_*)
+# are valid — the linker can guarantee those symbols won't be interposed.
+if(UNIX AND NOT APPLE)
+    target_link_options(thumbnailer PRIVATE -Wl,-Bsymbolic)
+endif()
