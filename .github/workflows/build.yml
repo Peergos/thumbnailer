@@ -75,7 +75,7 @@ jobs:
         id: cache-ffmpeg
         with:
           path: ffmpeg-build
-          key: ffmpeg-${{ env.FFMPEG_VERSION }}-webp-${{ env.LIBWEBP_VERSION }}-${{ matrix.platform }}-v1
+          key: ffmpeg-${{ env.FFMPEG_VERSION }}-webp-${{ env.LIBWEBP_VERSION }}-${{ matrix.platform }}-v2
 
       - name: Build libwebp (Linux/macOS)
         if: runner.os != 'Windows' && steps.cache-ffmpeg.outputs.cache-hit != 'true'
@@ -83,7 +83,7 @@ jobs:
           NPROC=$(nproc 2>/dev/null || sysctl -n hw.logicalcpu)
           curl -fsSL https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-${{ env.LIBWEBP_VERSION }}.tar.gz | tar xz
           cd libwebp-${{ env.LIBWEBP_VERSION }}
-          ./configure --prefix=$(pwd)/../ffmpeg-build \
+          CFLAGS=-fPIC ./configure --prefix=$(pwd)/../ffmpeg-build \
             --enable-static --disable-shared \
             --disable-libwebpmux --disable-libwebpdemux \
             --disable-libwebpdecoder --disable-libwebpextras \
@@ -121,6 +121,7 @@ jobs:
           msystem: MINGW64
           update: true
           install: >-
+            mingw-w64-x86_64-gcc
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-pkg-config
             mingw-w64-x86_64-nasm
@@ -132,7 +133,7 @@ jobs:
         id: cache-ffmpeg-win
         with:
           path: ffmpeg-build
-          key: ffmpeg-${{ env.FFMPEG_VERSION }}-webp-${{ env.LIBWEBP_VERSION }}-${{ matrix.platform }}-v1
+          key: ffmpeg-${{ env.FFMPEG_VERSION }}-webp-${{ env.LIBWEBP_VERSION }}-${{ matrix.platform }}-v2
 
       - name: Build libwebp (Windows)
         if: runner.os == 'Windows' && steps.cache-ffmpeg-win.outputs.cache-hit != 'true'
@@ -155,7 +156,6 @@ jobs:
           cd ffmpeg-${{ env.FFMPEG_VERSION }}
           export PKG_CONFIG_PATH="$(pwd)/../ffmpeg-build/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
           ./configure --prefix=$(pwd)/../ffmpeg-build \
-            --toolchain=msvc \
             --target-os=mingw32 \
             --arch=x86_64 \
             --pkg-config-flags="--static" \
