@@ -27,6 +27,7 @@ env:
     --enable-static
     --disable-shared
     --enable-pic
+    --enable-lto
     --disable-ffmpeg
     --disable-ffplay
     --disable-ffprobe
@@ -79,7 +80,7 @@ jobs:
         id: cache-ffmpeg
         with:
           path: ffmpeg-build
-          key: ffmpeg-${{ env.FFMPEG_VERSION }}-webp-${{ env.LIBWEBP_VERSION }}-${{ matrix.platform }}-v4
+          key: ffmpeg-${{ env.FFMPEG_VERSION }}-webp-${{ env.LIBWEBP_VERSION }}-${{ matrix.platform }}-v5
 
       - name: Build libwebp (Linux/macOS)
         if: runner.os != 'Windows' && steps.cache-ffmpeg.outputs.cache-hit != 'true'
@@ -88,7 +89,7 @@ jobs:
           PREFIX=$(pwd)/ffmpeg-build
           curl -fsSL https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-${{ env.LIBWEBP_VERSION }}.tar.gz | tar xz
           cd libwebp-${{ env.LIBWEBP_VERSION }}
-          CFLAGS=-fPIC ./configure --prefix="$PREFIX" \
+          CFLAGS="-fPIC -flto" ./configure --prefix="$PREFIX" \
             --enable-static --disable-shared \
             --disable-libwebpmux --disable-libwebpdemux \
             --disable-libwebpdecoder --disable-libwebpextras \
@@ -114,11 +115,18 @@ jobs:
         run: |
           cmake -B build \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
             -DFFMPEG_ROOT=$(pwd)/ffmpeg-build
           cmake --build build --config Release
           mkdir -p resources/native/${{ matrix.platform }}
           find build -name "thumbnailer.*" \( -name "*.so" -o -name "*.dylib" \) \
             -exec cp {} resources/native/${{ matrix.platform }}/${{ matrix.lib }} \;
+          LIB=resources/native/${{ matrix.platform }}/${{ matrix.lib }}
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            strip -x "$LIB"
+          else
+            strip --strip-unneeded "$LIB"
+          fi
 
       # ── Windows (MSYS2 + MinGW) ─────────────────────────────────────────────
       - name: Set up MSYS2 (Windows)
@@ -140,7 +148,7 @@ jobs:
         id: cache-ffmpeg-win
         with:
           path: ffmpeg-build
-          key: ffmpeg-${{ env.FFMPEG_VERSION }}-webp-${{ env.LIBWEBP_VERSION }}-${{ matrix.platform }}-v3
+          key: ffmpeg-${{ env.FFMPEG_VERSION }}-webp-${{ env.LIBWEBP_VERSION }}-${{ matrix.platform }}-v4
 
       - name: Build libwebp (Windows)
         if: runner.os == 'Windows' && steps.cache-ffmpeg-win.outputs.cache-hit != 'true'
@@ -148,7 +156,7 @@ jobs:
         run: |
           curl -fsSL https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-${{ env.LIBWEBP_VERSION }}.tar.gz | tar xz
           cd libwebp-${{ env.LIBWEBP_VERSION }}
-          ./configure --prefix=$(pwd)/../ffmpeg-build \
+          CFLAGS=-flto ./configure --prefix=$(pwd)/../ffmpeg-build \
             --enable-static --disable-shared \
             --disable-libwebpmux --disable-libwebpdemux \
             --disable-libwebpdecoder --disable-libwebpextras \
@@ -176,10 +184,12 @@ jobs:
           cmake -B build \
             -G "Unix Makefiles" \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
             -DFFMPEG_ROOT=$(pwd)/ffmpeg-build
           cmake --build build --config Release
           mkdir -p resources/native/${{ matrix.platform }}
           cp build/thumbnailer.dll resources/native/${{ matrix.platform }}/
+          strip resources/native/${{ matrix.platform }}/thumbnailer.dll
 
       # ── upload native lib as artifact ────────────────────────────────────────
       - name: Upload native lib
