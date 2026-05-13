@@ -42,15 +42,19 @@ jobs:
           - os: ubuntu-24.04
             platform: linux-x86_64
             lib: thumbnailer.so
+            extra_cflags: "--extra-cflags=-fPIC"
           - os: ubuntu-24.04-arm
             platform: linux-aarch64
             lib: thumbnailer.so
+            extra_cflags: ""
           - os: macos-13
             platform: macos-x86_64
             lib: thumbnailer.dylib
+            extra_cflags: ""
           - os: macos-14
             platform: macos-aarch64
             lib: thumbnailer.dylib
+            extra_cflags: ""
           - os: windows-latest
             platform: windows-x86_64
             lib: thumbnailer.dll
@@ -75,7 +79,7 @@ jobs:
         id: cache-ffmpeg
         with:
           path: ffmpeg-build
-          key: ffmpeg-${{ env.FFMPEG_VERSION }}-webp-${{ env.LIBWEBP_VERSION }}-${{ matrix.platform }}-v3
+          key: ffmpeg-${{ env.FFMPEG_VERSION }}-webp-${{ env.LIBWEBP_VERSION }}-${{ matrix.platform }}-${{ matrix.extra_cflags != '' && 'v3' || 'v2' }}
 
       - name: Build libwebp (Linux/macOS)
         if: runner.os != 'Windows' && steps.cache-ffmpeg.outputs.cache-hit != 'true'
@@ -99,7 +103,7 @@ jobs:
           export PKG_CONFIG_PATH="$(pwd)/../ffmpeg-build/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
           ./configure --prefix=$(pwd)/../ffmpeg-build \
             --pkg-config-flags="--static" \
-            --extra-cflags=-fPIC \
+            ${{ matrix.extra_cflags }} \
             ${{ env.FFMPEG_OPTS }}
           make -j$NPROC install
 
