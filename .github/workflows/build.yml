@@ -1,0 +1,217 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  release:
+    types: [created]
+
+env:
+  FFMPEG_VERSION: "7.1"
+  LIBWEBP_VERSION: "1.4.0"
+  # Minimal set of components needed for video thumbnail extraction.
+  FFMPEG_OPTS: >-
+    --disable-everything
+    --enable-avformat
+    --enable-avcodec
+    --enable-avutil
+    --enable-swscale
+    --enable-swresample
+    --enable-decoder=h264,hevc,vp8,vp9,av1,mpeg4,mpeg2video,mjpeg,theora,vp6,flv,rv10,rv20,rv30,rv40
+    --enable-demuxer=mov,matroska,avi,mpeg,mpegts,ogg,flv,rm,asf
+    --enable-protocol=file
+    --enable-libwebp
+    --enable-encoder=libwebp
+    --enable-muxer=webp
+    --enable-filter=scale
+    --enable-static
+    --disable-shared
+    --enable-pic
+    --disable-ffmpeg
+    --disable-ffplay
+    --disable-ffprobe
+    --disable-doc
+
+jobs:
+  # ── build native lib on each platform ──────────────────────────────────────
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: linux-x86_64
+            lib: thumbnailer.so
+          - os: ubuntu-24.04-arm
+            platform: linux-aarch64
+            lib: thumbnailer.so
+          - os: macos-13
+            platform: macos-x86_64
+            lib: thumbnailer.dylib
+          - os: macos-14
+            platform: macos-aarch64
+            lib: thumbnailer.dylib
+          - os: windows-latest
+            platform: windows-x86_64
+            lib: thumbnailer.dll
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Linux / macOS ───────────────────────────────────────────────────────
+      - name: Install build tools (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y cmake pkg-config nasm
+
+      - name: Install build tools (macOS)
+        if: runner.os == 'macOS'
+        run: brew install cmake pkg-config nasm
+
+      - name: Cache FFmpeg + libwebp build (Linux/macOS)
+        if: runner.os != 'Windows'
+        uses: actions/cache@v4
+        id: cache-ffmpeg
+        with:
+          path: ffmpeg-build
+          key: ffmpeg-${{ env.FFMPEG_VERSION }}-webp-${{ env.LIBWEBP_VERSION }}-${{ matrix.platform }}-v1
+
+      - name: Build libwebp (Linux/macOS)
+        if: runner.os != 'Windows' && steps.cache-ffmpeg.outputs.cache-hit != 'true'
+        run: |
+          NPROC=$(nproc 2>/dev/null || sysctl -n hw.logicalcpu)
+          curl -fsSL https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-${{ env.LIBWEBP_VERSION }}.tar.gz | tar xz
+          cd libwebp-${{ env.LIBWEBP_VERSION }}
+          ./configure --prefix=$(pwd)/../ffmpeg-build \
+            --enable-static --disable-shared \
+            --disable-libwebpmux --disable-libwebpdemux \
+            --disable-libwebpdecoder --disable-libwebpextras \
+            --disable-gif --disable-jpeg --disable-png --disable-tiff --disable-wic
+          make -j$NPROC install
+
+      - name: Build FFmpeg (Linux/macOS)
+        if: runner.os != 'Windows' && steps.cache-ffmpeg.outputs.cache-hit != 'true'
+        run: |
+          NPROC=$(nproc 2>/dev/null || sysctl -n hw.logicalcpu)
+          curl -fsSL https://ffmpeg.org/releases/ffmpeg-${{ env.FFMPEG_VERSION }}.tar.xz | tar xJ
+          cd ffmpeg-${{ env.FFMPEG_VERSION }}
+          PKG_CONFIG_PATH=$(pwd)/../ffmpeg-build/lib/pkgconfig \
+          ./configure --prefix=$(pwd)/../ffmpeg-build ${{ env.FFMPEG_OPTS }}
+          make -j$NPROC install
+
+      - name: Build native lib (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DFFMPEG_ROOT=$(pwd)/ffmpeg-build
+          cmake --build build --config Release
+          mkdir -p resources/native/${{ matrix.platform }}
+          find build -name "thumbnailer.*" \( -name "*.so" -o -name "*.dylib" \) \
+            -exec cp {} resources/native/${{ matrix.platform }}/${{ matrix.lib }} \;
+
+      # ── Windows (MSYS2 + MinGW) ─────────────────────────────────────────────
+      - name: Set up MSYS2 (Windows)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-pkg-config
+            mingw-w64-x86_64-nasm
+            make
+
+      - name: Cache FFmpeg + libwebp build (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        id: cache-ffmpeg-win
+        with:
+          path: ffmpeg-build
+          key: ffmpeg-${{ env.FFMPEG_VERSION }}-webp-${{ env.LIBWEBP_VERSION }}-${{ matrix.platform }}-v1
+
+      - name: Build libwebp (Windows)
+        if: runner.os == 'Windows' && steps.cache-ffmpeg-win.outputs.cache-hit != 'true'
+        shell: msys2 {0}
+        run: |
+          curl -fsSL https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-${{ env.LIBWEBP_VERSION }}.tar.gz | tar xz
+          cd libwebp-${{ env.LIBWEBP_VERSION }}
+          ./configure --prefix=$(pwd)/../ffmpeg-build \
+            --enable-static --disable-shared \
+            --disable-libwebpmux --disable-libwebpdemux \
+            --disable-libwebpdecoder --disable-libwebpextras \
+            --disable-gif --disable-jpeg --disable-png --disable-tiff --disable-wic
+          make -j$(nproc) install
+
+      - name: Build FFmpeg (Windows)
+        if: runner.os == 'Windows' && steps.cache-ffmpeg-win.outputs.cache-hit != 'true'
+        shell: msys2 {0}
+        run: |
+          curl -fsSL https://ffmpeg.org/releases/ffmpeg-${{ env.FFMPEG_VERSION }}.tar.xz | tar xJ
+          cd ffmpeg-${{ env.FFMPEG_VERSION }}
+          PKG_CONFIG_PATH=$(pwd)/../ffmpeg-build/lib/pkgconfig \
+          ./configure --prefix=$(pwd)/../ffmpeg-build \
+            --toolchain=msvc \
+            --target-os=mingw32 \
+            --arch=x86_64 \
+            ${{ env.FFMPEG_OPTS }}
+          make -j$(nproc) install
+
+      - name: Build native lib (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          cmake -B build \
+            -G "Unix Makefiles" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DFFMPEG_ROOT=$(pwd)/ffmpeg-build
+          cmake --build build --config Release
+          mkdir -p resources/native/${{ matrix.platform }}
+          cp build/thumbnailer.dll resources/native/${{ matrix.platform }}/
+
+      # ── upload native lib as artifact ────────────────────────────────────────
+      - name: Upload native lib
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.platform }}
+          path: resources/native/${{ matrix.platform }}/
+
+  # ── assemble JAR from all native libs ──────────────────────────────────────
+  jar:
+    needs: native
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Download all native libs
+        uses: actions/download-artifact@v4
+        with:
+          path: resources/native/
+          pattern: native-*
+          merge-multiple: true
+
+      - name: Build JAR
+        run: |
+          ant jar
+          echo "Native libs included:"
+          jar tf thumbnailer.jar | grep native/
+
+      - name: Upload JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: thumbnailer.jar
+          path: thumbnailer.jar
+
+      - name: Attach to release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: thumbnailer.jar

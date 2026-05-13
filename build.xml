@@ -1,0 +1,28 @@
+<project name="thumbnailer" default="jar" basedir=".">
+
+    <property name="src.dir"       value="src"/>
+    <property name="build.dir"     value="build/classes"/>
+    <property name="resources.dir" value="resources"/>
+    <property name="jar.file"      value="thumbnailer.jar"/>
+
+    <target name="compile">
+        <mkdir dir="${build.dir}"/>
+        <javac srcdir="${src.dir}"
+               destdir="${build.dir}"
+               includeantruntime="false"
+               release="11"/>
+    </target>
+
+    <target name="jar" depends="compile">
+        <jar destfile="${jar.file}" basedir="${build.dir}">
+            <fileset dir="${resources.dir}" includes="native/**"/>
+        </jar>
+        <echo message="Built ${jar.file}"/>
+    </target>
+
+    <target name="clean">
+        <delete dir="build"/>
+        <delete file="${jar.file}"/>
+    </target>
+
+</project>
