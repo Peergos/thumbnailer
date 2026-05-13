@@ -17,8 +17,8 @@ env:
     --enable-avutil
     --enable-swscale
     --enable-swresample
-    --enable-decoder=h264,hevc,vp8,vp9,av1,mpeg4,mpeg2video,mjpeg,theora,vp6,flv,rv10,rv20,rv30,rv40
-    --enable-demuxer=mov,matroska,avi,mpeg,mpegts,ogg,flv,rm,asf
+    --enable-decoder=h264,hevc,vp8,vp9,av1,mpeg4,mpeg2video,mjpeg,theora,vp6,flv,rv10,rv20,rv30,rv40,png,bmp,gif,tiff,webp
+    --enable-demuxer=mov,matroska,avi,mpeg,mpegts,ogg,flv,rm,asf,image2,gif,png_pipe,bmp_pipe,webp_pipe,tiff_pipe,avif
     --enable-protocol=file
     --enable-libwebp
     --enable-encoder=libwebp

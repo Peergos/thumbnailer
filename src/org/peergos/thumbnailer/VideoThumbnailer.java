@@ -77,5 +77,13 @@ public class VideoThumbnailer {
         return Optional.ofNullable(result);
     }
 
+    public static Optional<byte[]> generateImageWebP(File imageFile, int maxSize) {
+        if (!LOADED)
+            return Optional.empty();
+        byte[] result = generateImage(imageFile.getAbsolutePath(), maxSize);
+        return Optional.ofNullable(result);
+    }
+
     private static native byte[] generate(String path, int maxSize);
+    private static native byte[] generateImage(String path, int maxSize);
 }
