@@ -61,9 +61,12 @@ target_link_options(thumbnailer PRIVATE
     ${LIBWEBP_LDFLAGS_OTHER}
 )
 
-# Statically link MinGW runtime so the DLL has no external dependencies on Windows
+# Statically link MinGW runtime and all non-system libs so the DLL is self-contained
 if(MINGW)
-    target_link_options(thumbnailer PRIVATE -static-libgcc -Wl,-Bstatic,-lpthread,-Bdynamic)
+    target_link_options(thumbnailer PRIVATE
+        -static-libgcc
+        -Wl,-Bstatic,-lwinpthread,-lbz2,-liconv,-llzma,-lz,-Bdynamic
+    )
 endif()
 
 # On macOS, don't embed an absolute path to the JVM dylib
