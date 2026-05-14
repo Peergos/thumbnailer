@@ -7,9 +7,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Shared WebP encoder: encodes dst_frame (RGB24, dw x dh) and returns a new
-   jbyteArray.  Frees dst_frame on both success and failure. */
-static jbyteArray webp_encode_frame(JNIEnv *env, AVFrame *dst_frame, int dw, int dh)
+/* Encode dst_frame (YUV420P) as WebP quality 75 and return a new jbyteArray.
+   Frees dst_frame (and its data) on both success and failure. */
+static jbyteArray webp_encode_frame(JNIEnv *env, AVFrame *dst_frame)
 {
     AVCodecContext *enc_ctx = NULL;
     AVPacket       *out_pkt = NULL;
@@ -19,9 +19,9 @@ static jbyteArray webp_encode_frame(JNIEnv *env, AVFrame *dst_frame, int dw, int
     if (!enc) goto done;
     enc_ctx = avcodec_alloc_context3(enc);
     if (!enc_ctx) goto done;
-    enc_ctx->width     = dw;
-    enc_ctx->height    = dh;
-    enc_ctx->pix_fmt   = AV_PIX_FMT_RGB24;
+    enc_ctx->width     = dst_frame->width;
+    enc_ctx->height    = dst_frame->height;
+    enc_ctx->pix_fmt   = AV_PIX_FMT_YUV420P;
     enc_ctx->time_base = (AVRational){1, 25};
     if (avcodec_open2(enc_ctx, enc, NULL) < 0) goto done;
     av_opt_set_int(enc_ctx->priv_data, "quality", 75, 0);
@@ -59,29 +59,29 @@ static jbyteArray encode_webp(JNIEnv *env, AVFrame *src_frame, int maxSize)
     dh = (dh + 1) & ~1;
 
     struct SwsContext *sws = sws_getContext(sw, sh, src_frame->format,
-                                            dw, dh, AV_PIX_FMT_RGB24,
+                                            dw, dh, AV_PIX_FMT_YUV420P,
                                             SWS_BILINEAR, NULL, NULL, NULL);
     if (!sws) return NULL;
 
     AVFrame *dst = av_frame_alloc();
     if (!dst) { sws_freeContext(sws); return NULL; }
-    dst->format = AV_PIX_FMT_RGB24;
+    dst->format = AV_PIX_FMT_YUV420P;
     dst->width  = dw;
     dst->height = dh;
-    if (av_image_alloc(dst->data, dst->linesize, dw, dh, AV_PIX_FMT_RGB24, 32) < 0) {
+    if (av_image_alloc(dst->data, dst->linesize, dw, dh, AV_PIX_FMT_YUV420P, 32) < 0) {
         sws_freeContext(sws); av_frame_free(&dst); return NULL;
     }
     sws_scale(sws, (const uint8_t * const *)src_frame->data, src_frame->linesize,
               0, sh, dst->data, dst->linesize);
     sws_freeContext(sws);
 
-    return webp_encode_frame(env, dst, dw, dh);
+    return webp_encode_frame(env, dst);
 }
 
 /*
- * Scale src_frame so the SHORT edge == size, then center-crop to size x size,
+ * Scale src_frame so the SHORT edge == size, center-crop to size x size,
  * encode as WebP quality 75, return a new jbyteArray or NULL.
- * Matches JavaImageThumbnailer's behavior exactly.
+ * Matches JavaImageThumbnailer's behaviour exactly.
  */
 static jbyteArray encode_webp_square(JNIEnv *env, AVFrame *src_frame, int size)
 {
@@ -89,43 +89,57 @@ static jbyteArray encode_webp_square(JNIEnv *env, AVFrame *src_frame, int size)
 
     /* scale so the short edge == size */
     int cw, ch;
-    if (sh > sw) { cw = size; ch = (int)((double)sh / sw * size); } /* portrait */
-    else         { ch = size; cw = (int)((double)sw / sh * size); } /* landscape/square */
+    if (sh > sw) { cw = size; ch = (int)((double)sh / sw * size); }
+    else         { ch = size; cw = (int)((double)sw / sh * size); }
+    /* keep even for YUV420P subsampling */
+    cw = (cw + 1) & ~1;
+    ch = (ch + 1) & ~1;
 
     struct SwsContext *sws = sws_getContext(sw, sh, src_frame->format,
-                                            cw, ch, AV_PIX_FMT_RGB24,
+                                            cw, ch, AV_PIX_FMT_YUV420P,
                                             SWS_BILINEAR, NULL, NULL, NULL);
     if (!sws) return NULL;
 
-    /* allocate scaled canvas */
     uint8_t *canvas[4] = {0};
-    int linesize[4] = {0};
-    if (av_image_alloc(canvas, linesize, cw, ch, AV_PIX_FMT_RGB24, 32) < 0) {
+    int      linesize[4] = {0};
+    if (av_image_alloc(canvas, linesize, cw, ch, AV_PIX_FMT_YUV420P, 32) < 0) {
         sws_freeContext(sws); return NULL;
     }
     sws_scale(sws, (const uint8_t * const *)src_frame->data, src_frame->linesize,
               0, sh, canvas, linesize);
     sws_freeContext(sws);
 
-    /* center-crop to size x size */
-    int x_off = (cw - size) / 2;
-    int y_off = (ch - size) / 2;
+    /* center-crop offsets — must be even for correct UV alignment */
+    int x_off = ((cw - size) / 2) & ~1;
+    int y_off = ((ch - size) / 2) & ~1;
 
     AVFrame *dst = av_frame_alloc();
     if (!dst) { av_freep(&canvas[0]); return NULL; }
-    dst->format = AV_PIX_FMT_RGB24;
+    dst->format = AV_PIX_FMT_YUV420P;
     dst->width  = size;
     dst->height = size;
-    if (av_image_alloc(dst->data, dst->linesize, size, size, AV_PIX_FMT_RGB24, 32) < 0) {
+    if (av_image_alloc(dst->data, dst->linesize, size, size, AV_PIX_FMT_YUV420P, 32) < 0) {
         av_freep(&canvas[0]); av_frame_free(&dst); return NULL;
     }
+
+    /* Y plane: 1 byte/pixel, full resolution */
     for (int row = 0; row < size; row++)
         memcpy(dst->data[0] + row * dst->linesize[0],
-               canvas[0] + (y_off + row) * linesize[0] + x_off * 3,
-               size * 3);
+               canvas[0] + (y_off + row) * linesize[0] + x_off,
+               size);
+
+    /* U and V planes: 1 byte per 2x2 block */
+    for (int row = 0; row < size / 2; row++) {
+        memcpy(dst->data[1] + row * dst->linesize[1],
+               canvas[1] + (y_off / 2 + row) * linesize[1] + x_off / 2,
+               size / 2);
+        memcpy(dst->data[2] + row * dst->linesize[2],
+               canvas[2] + (y_off / 2 + row) * linesize[2] + x_off / 2,
+               size / 2);
+    }
     av_freep(&canvas[0]);
 
-    return webp_encode_frame(env, dst, size, size);
+    return webp_encode_frame(env, dst);
 }
 
 /*
