@@ -48,7 +48,7 @@ jobs:
             platform: linux-aarch64
             lib: thumbnailer.so
             extra_cflags: ""
-          - os: macos-13
+          - os: macos-15-intel
             platform: macos-x86_64
             lib: thumbnailer.dylib
             extra_cflags: ""
