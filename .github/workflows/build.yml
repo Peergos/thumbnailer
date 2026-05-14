@@ -8,7 +8,9 @@ on:
 
 env:
   FFMPEG_VERSION: "7.1"
+  FFMPEG_SHA256: "40973d44970dbc83ef302b0609f2e74982be2d85916dd2ee7472d30678a7abe6"
   LIBWEBP_VERSION: "1.4.0"
+  LIBWEBP_SHA256: "61f873ec69e3be1b99535634340d5bde750b2e4447caa1db9f61be3fd49ab1e5"
   # Minimal set of components needed for video thumbnail extraction.
   FFMPEG_OPTS: >-
     --disable-everything
@@ -87,7 +89,9 @@ jobs:
         run: |
           NPROC=$(nproc 2>/dev/null || sysctl -n hw.logicalcpu)
           PREFIX=$(pwd)/ffmpeg-build
-          curl -fsSL https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-${{ env.LIBWEBP_VERSION }}.tar.gz | tar xz
+          curl -fsSL https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-${{ env.LIBWEBP_VERSION }}.tar.gz -o libwebp.tar.gz
+          echo "${{ env.LIBWEBP_SHA256 }}  libwebp.tar.gz" | sha256sum -c -
+          tar xzf libwebp.tar.gz
           cd libwebp-${{ env.LIBWEBP_VERSION }}
           CFLAGS="-fPIC -flto" ./configure --prefix="$PREFIX" \
             --enable-static --disable-shared \
@@ -101,7 +105,9 @@ jobs:
         run: |
           NPROC=$(nproc 2>/dev/null || sysctl -n hw.logicalcpu)
           PREFIX=$(pwd)/ffmpeg-build
-          curl -fsSL https://ffmpeg.org/releases/ffmpeg-${{ env.FFMPEG_VERSION }}.tar.xz | tar xJ
+          curl -fsSL https://ffmpeg.org/releases/ffmpeg-${{ env.FFMPEG_VERSION }}.tar.xz -o ffmpeg.tar.xz
+          echo "${{ env.FFMPEG_SHA256 }}  ffmpeg.tar.xz" | sha256sum -c -
+          tar xJf ffmpeg.tar.xz
           cd ffmpeg-${{ env.FFMPEG_VERSION }}
           export PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
           ./configure --prefix="$PREFIX" \
@@ -154,7 +160,9 @@ jobs:
         if: runner.os == 'Windows' && steps.cache-ffmpeg-win.outputs.cache-hit != 'true'
         shell: msys2 {0}
         run: |
-          curl -fsSL https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-${{ env.LIBWEBP_VERSION }}.tar.gz | tar xz
+          curl -fsSL https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-${{ env.LIBWEBP_VERSION }}.tar.gz -o libwebp.tar.gz
+          echo "${{ env.LIBWEBP_SHA256 }}  libwebp.tar.gz" | sha256sum -c -
+          tar xzf libwebp.tar.gz
           cd libwebp-${{ env.LIBWEBP_VERSION }}
           CFLAGS=-flto ./configure --prefix=$(pwd)/../ffmpeg-build \
             --enable-static --disable-shared \
@@ -167,7 +175,9 @@ jobs:
         if: runner.os == 'Windows' && steps.cache-ffmpeg-win.outputs.cache-hit != 'true'
         shell: msys2 {0}
         run: |
-          curl -fsSL https://ffmpeg.org/releases/ffmpeg-${{ env.FFMPEG_VERSION }}.tar.xz | tar xJ
+          curl -fsSL https://ffmpeg.org/releases/ffmpeg-${{ env.FFMPEG_VERSION }}.tar.xz -o ffmpeg.tar.xz
+          echo "${{ env.FFMPEG_SHA256 }}  ffmpeg.tar.xz" | sha256sum -c -
+          tar xJf ffmpeg.tar.xz
           cd ffmpeg-${{ env.FFMPEG_VERSION }}
           export PKG_CONFIG_PATH="$(pwd)/../ffmpeg-build/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
           ./configure --prefix=$(pwd)/../ffmpeg-build \
@@ -220,7 +230,7 @@ jobs:
 
       - name: Build JAR
         run: |
-          ant jar
+          SOURCE_DATE_EPOCH=0 ant jar
           echo "Native libs included:"
           jar tf thumbnailer.jar | grep native/
 
