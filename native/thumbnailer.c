@@ -3,10 +3,26 @@
 #include <libavcodec/avcodec.h>
 #include <libavutil/display.h>
 #include <libavutil/imgutils.h>
+#include <libavutil/log.h>
 #include <libavutil/opt.h>
 #include <libswscale/swscale.h>
 #include <stdlib.h>
 #include <string.h>
+
+static void log_callback(void *ptr, int level, const char *fmt, va_list vl)
+{
+    if (level > av_log_get_level()) return;
+    if (strstr(fmt, "deprecated pixel format")) return;
+    if (strstr(fmt, "invalid TIFF header in Exif")) return;
+    if (strstr(fmt, "skipping unsupported chunk")) return;
+    av_log_default_callback(ptr, level, fmt, vl);
+}
+
+JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved)
+{
+    av_log_set_callback(log_callback);
+    return JNI_VERSION_1_6;
+}
 
 /* ── orientation helpers ──────────────────────────────────────────────────── */
 
