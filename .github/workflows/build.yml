@@ -158,7 +158,7 @@ jobs:
         id: cache-ffmpeg-win
         with:
           path: ffmpeg-build
-          key: ffmpeg-${{ env.FFMPEG_VERSION }}-webp-${{ env.LIBWEBP_VERSION }}-${{ matrix.platform }}-v4
+          key: ffmpeg-${{ env.FFMPEG_VERSION }}-webp-${{ env.LIBWEBP_VERSION }}-${{ matrix.platform }}-v5
 
       - name: Build libwebp (Windows)
         if: runner.os == 'Windows' && steps.cache-ffmpeg-win.outputs.cache-hit != 'true'

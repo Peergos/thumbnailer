@@ -61,12 +61,12 @@ target_link_options(thumbnailer PRIVATE
     ${LIBWEBP_LDFLAGS_OTHER}
 )
 
-# Statically link MinGW runtime and all non-system libs so the DLL is self-contained
+# Statically link MinGW runtime and all non-system libs so the DLL is self-contained.
+# These must be in target_link_libraries (not target_link_options) so they appear
+# after the FFmpeg static libs in the link command and resolve their dependencies.
 if(MINGW)
-    target_link_options(thumbnailer PRIVATE
-        -static-libgcc
-        -Wl,-Bstatic,-lwinpthread,-lbz2,-liconv,-llzma,-lz,-Bdynamic
-    )
+    target_link_options(thumbnailer PRIVATE -static-libgcc)
+    target_link_libraries(thumbnailer PRIVATE -Wl,-Bstatic z bz2 iconv lzma winpthread -Wl,-Bdynamic)
 endif()
 
 # On macOS, don't embed an absolute path to the JVM dylib
