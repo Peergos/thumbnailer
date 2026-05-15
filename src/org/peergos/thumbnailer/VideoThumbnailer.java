@@ -2,6 +2,7 @@ package org.peergos.thumbnailer;
 
 import java.io.*;
 import java.nio.file.*;
+import java.security.*;
 import java.util.Optional;
 
 public class VideoThumbnailer {
@@ -18,18 +19,29 @@ public class VideoThumbnailer {
             if (resource == null)
                 return false;
             String ext = resource.substring(resource.lastIndexOf('.'));
-            Path tmp = Files.createTempFile("thumbnailer-", ext);
-            tmp.toFile().deleteOnExit();
+            byte[] libBytes;
             try (InputStream in = VideoThumbnailer.class.getResourceAsStream(resource)) {
                 if (in == null)
                     return false;
-                Files.copy(in, tmp, StandardCopyOption.REPLACE_EXISTING);
+                libBytes = in.readAllBytes();
             }
+            String hash = sha256Hex(libBytes);
+            Path tmp = Path.of(System.getProperty("java.io.tmpdir"), "thumbnailer-" + hash + ext);
+            if (!Files.exists(tmp))
+                Files.write(tmp, libBytes);
             System.load(tmp.toAbsolutePath().toString());
             return true;
         } catch (Exception e) {
             return false;
         }
+    }
+
+    private static String sha256Hex(byte[] data) throws NoSuchAlgorithmException {
+        byte[] digest = MessageDigest.getInstance("SHA-256").digest(data);
+        StringBuilder sb = new StringBuilder(digest.length * 2);
+        for (byte b : digest)
+            sb.append(String.format("%02x", b));
+        return sb.toString();
     }
 
     private static String nativeResource() {
