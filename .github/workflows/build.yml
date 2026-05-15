@@ -20,7 +20,7 @@ env:
     --enable-swscale
     --enable-swresample
     --enable-decoder=h264,hevc,vp8,vp9,av1,mpeg4,mpeg1video,mpeg2video,msmpeg4v3,mjpeg,theora,vp6,flv,rv10,rv20,rv30,rv40,png,bmp,gif,tiff,webp
-    --enable-demuxer=mov,matroska,avi,mpeg,mpegps,mpegts,ogg,flv,rm,asf,image2,gif,image_png_pipe,image_bmp_pipe,image_webp_pipe,image_tiff_pipe
+    --enable-demuxer=mov,matroska,avi,mpeg,mpegps,mpegvideo,mpegts,ogg,flv,rm,asf,image2,gif,image_png_pipe,image_bmp_pipe,image_webp_pipe,image_tiff_pipe
     --enable-parser=av1,h264,hevc,vp9,mpeg4video,mpegvideo,png,webp
     --enable-bsf=av1_frame_merge
     --enable-protocol=file

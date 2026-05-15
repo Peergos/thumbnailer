@@ -25,6 +25,22 @@ public class ThumbnailerTest {
         assertWebP("resources/img/tree.avif", result.get());
     }
 
+    @Test public void testMp4()       { assertVideo("resources/video/sample.mp4"); }
+    @Test public void testMp4Hevc()   { assertVideo("resources/video/buck-bunny-hevc.mp4"); }
+    @Test public void testMkv()       { assertVideo("resources/video/sample.mkv"); }
+    @Test public void testMov()       { assertVideo("resources/video/sample.mov"); }
+    @Test public void testAvi()       { assertVideo("resources/video/sample.avi"); }
+    @Test public void testFlv()       { assertVideo("resources/video/sample.flv"); }
+    @Test public void testMpeg()      { assertVideo("resources/video/sample.mpeg"); }
+    @Test public void testWebm()      { assertVideo("resources/video/sample.webm"); }
+    @Test public void testWmv()       { assertVideo("resources/video/sample.wmv"); }
+
+    private static void assertVideo(String path) {
+        Optional<byte[]> result = VideoThumbnailer.generateWebP(new File(path), 200);
+        Assert.assertTrue("No thumbnail for " + path, result.isPresent());
+        assertWebP(path, result.get());
+    }
+
     private static void assertThumbnail(String path) {
         Optional<byte[]> result = VideoThumbnailer.generateImageWebP(new File(path), 200);
         Assert.assertTrue("No thumbnail for " + path, result.isPresent());
