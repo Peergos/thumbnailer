@@ -19,11 +19,8 @@ public class ThumbnailerTest {
     @Test public void testTiff() { assertThumbnail("resources/img/scene.tiff"); }
     @Test public void testBmp()  { assertThumbnail("resources/img/sample.bmp"); }
 
-    @Test public void testAvif() {
-        Optional<byte[]> result = VideoThumbnailer.generateImageWebP(new File("resources/img/tree.avif"), 200);
-        Assume.assumeTrue("AVIF decoding not available (requires libdav1d)", result.isPresent());
-        assertWebP("resources/img/tree.avif", result.get());
-    }
+    @Test public void testAvif()    { assertThumbnail("resources/img/tree.avif"); }
+    @Test public void testAvifFox() { assertThumbnail("resources/img/fox.avif"); }
 
     @Test public void testMp4()       { assertVideo("resources/video/sample.mp4"); }
     @Test public void testMp4Hevc()   { assertVideo("resources/video/buck-bunny-hevc.mp4"); }

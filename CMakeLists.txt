@@ -8,7 +8,7 @@ find_package(JNI REQUIRED)
 # FFMPEG_ROOT can be passed in from CI: -DFFMPEG_ROOT=/path/to/ffmpeg-build
 if(DEFINED FFMPEG_ROOT)
     set(CMAKE_PREFIX_PATH ${FFMPEG_ROOT})
-    set(ENV{PKG_CONFIG_PATH} "${FFMPEG_ROOT}/lib/pkgconfig")
+    set(ENV{PKG_CONFIG_PATH} "${FFMPEG_ROOT}/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}")
 endif()
 
 find_package(PkgConfig REQUIRED)
@@ -17,6 +17,7 @@ pkg_check_modules(AVCODEC  REQUIRED libavcodec)
 pkg_check_modules(AVUTIL   REQUIRED libavutil)
 pkg_check_modules(SWSCALE  REQUIRED libswscale)
 pkg_check_modules(LIBWEBP  REQUIRED libwebp)
+pkg_check_modules(DAV1D    libdav1d)
 
 add_library(thumbnailer SHARED native/thumbnailer.c)
 
@@ -32,6 +33,7 @@ target_include_directories(thumbnailer PRIVATE
     ${AVUTIL_INCLUDE_DIRS}
     ${SWSCALE_INCLUDE_DIRS}
     ${LIBWEBP_INCLUDE_DIRS}
+    ${DAV1D_INCLUDE_DIRS}
     $<$<BOOL:${FFMPEG_ROOT}>:${FFMPEG_ROOT}/include>
 )
 
@@ -43,7 +45,23 @@ target_link_directories(thumbnailer PRIVATE
     ${AVUTIL_LIBRARY_DIRS}
     ${SWSCALE_LIBRARY_DIRS}
     ${LIBWEBP_LIBRARY_DIRS}
+    ${DAV1D_LIBRARY_DIRS}
 )
+
+# If dav1d was found, link against the static archive directly to avoid cmake
+# silently dropping it when the system also has a libdav1d.so.
+if(DAV1D_FOUND)
+    find_library(DAV1D_STATIC_LIB libdav1d.a
+        HINTS ${DAV1D_LIBRARY_DIRS} ${FFMPEG_ROOT}/lib ${FFMPEG_ROOT}/lib/x86_64-linux-gnu
+        NO_DEFAULT_PATH)
+    if(DAV1D_STATIC_LIB)
+        set(_dav1d_link ${DAV1D_STATIC_LIB})
+    else()
+        set(_dav1d_link ${DAV1D_STATIC_LIBRARIES})
+    endif()
+else()
+    set(_dav1d_link "")
+endif()
 
 target_link_libraries(thumbnailer PRIVATE
     ${AVFORMAT_STATIC_LIBRARIES}
@@ -51,6 +69,7 @@ target_link_libraries(thumbnailer PRIVATE
     ${AVUTIL_STATIC_LIBRARIES}
     ${SWSCALE_STATIC_LIBRARIES}
     ${LIBWEBP_STATIC_LIBRARIES}
+    ${_dav1d_link}
 )
 
 target_link_options(thumbnailer PRIVATE
