@@ -83,5 +83,10 @@ endif()
 # Satisfy any GLIBC_2.33+ versioned symbols internally so the .so loads on
 # glibc >= 2.17.  The shim wraps each newer symbol with the older equivalent.
 if(UNIX AND NOT APPLE AND NOT MINGW)
-    target_sources(thumbnailer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/native/glibc_compat.c)
+    set(_compat_src ${CMAKE_CURRENT_SOURCE_DIR}/native/glibc_compat.c)
+    set_source_files_properties(${_compat_src} PROPERTIES COMPILE_FLAGS "-fno-lto")
+    target_sources(thumbnailer PRIVATE ${_compat_src})
+    target_link_libraries(thumbnailer PRIVATE m)
+    target_link_options(thumbnailer PRIVATE
+        -Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/native/glibc_compat.map)
 endif()

@@ -1,13 +1,25 @@
 /*
  * glibc version compatibility shim for Linux/x86-64.
  *
- * Building on a host with glibc >= 2.33 makes the .so require newer versioned
- * symbols that are absent on older distributions.  Each wrapper here satisfies
- * the newer versioned symbol internally by delegating to the older equivalent,
- * so the .so loads on any glibc >= 2.17.
+ * When built on glibc >= 2.33 the .so gets VERNEED entries for symbols like
+ * stat64@GLIBC_2.33, pthread_create@GLIBC_2.34, hypot@GLIBC_2.35 that don't
+ * exist on older distributions.
  *
- * To check what a built .so requires:
+ * Fix: export those newer-versioned symbols from this .so, implemented by
+ * delegating to old-versioned equivalents that exist on glibc >= 2.2.5.
+ *
+ * Key trick: use top-level .symver GAS directives to map plain alias names to
+ * specific old-versioned symbols.  Calling through the plain alias generates
+ * "alias@PLT" in the assembly (valid GAS), whereas inline asm operands with
+ * versioned names produce the rejected "sym@VER@PLT" syntax.
+ *
+ * stat64/lstat64/fstat64: the GLIBC_2.2.5 interface uses __xstat64/__lxstat64/
+ * __fxstat64 (the xstat family).  Direct stat64@GLIBC_2.2.5 does not exist in
+ * current libc; use __xstat64 with _STAT_VER instead.
+ *
+ * To verify no newer glibc required:
  *   nm -D thumbnailer.so | grep -E 'GLIBC_2\.(3[3-9]|[4-9][0-9])'
+ * should show only T (provided) entries, no U (undefined).
  */
 #if defined(__linux__) && defined(__x86_64__)
 
@@ -17,47 +29,50 @@
 #include <pthread.h>
 #include <math.h>
 
-/* ── stat64 / fstat64 / lstat64 → GLIBC_2.33 ──────────────────────────── */
+/* _STAT_VER is the version tag passed to __xstat64/__lxstat64/__fxstat64.
+ * On Linux/x86-64 it is always 1; glibc 2.33+ no longer exposes it publicly
+ * (the xstat family is deprecated) so we define it ourselves. */
+#ifndef _STAT_VER
+# define _STAT_VER 1
+#endif
 
-extern int __compat_stat64_old  (const char *, struct stat64 *) __asm__("stat64@GLIBC_2.2.5");
-extern int __compat_fstat64_old (int,           struct stat64 *) __asm__("fstat64@GLIBC_2.2.5");
-extern int __compat_lstat64_old (const char *, struct stat64 *) __asm__("lstat64@GLIBC_2.2.5");
+/* stat family: delegate to the xstat64 interface from GLIBC_2.2.5.
+ * stat64@GLIBC_2.2.5 does not exist in glibc >= 2.33; __xstat64@GLIBC_2.2.5
+ * is the equivalent old entry point. */
+__asm__(".symver __compat_xstat64,  __xstat64@GLIBC_2.2.5");
+__asm__(".symver __compat_lxstat64, __lxstat64@GLIBC_2.2.5");
+__asm__(".symver __compat_fxstat64, __fxstat64@GLIBC_2.2.5");
 
-__asm__(".symver __compat_stat64_new,  stat64@GLIBC_2.33");
-__asm__(".symver __compat_fstat64_new, fstat64@GLIBC_2.33");
-__asm__(".symver __compat_lstat64_new, lstat64@GLIBC_2.33");
+extern int __compat_xstat64 (int ver, const char *path, struct stat64 *buf);
+extern int __compat_lxstat64(int ver, const char *path, struct stat64 *buf);
+extern int __compat_fxstat64(int ver, int fd,           struct stat64 *buf);
 
-int __compat_stat64_new  (const char *p, struct stat64 *s) { return __compat_stat64_old(p, s);  }
-int __compat_fstat64_new (int fd,        struct stat64 *s) { return __compat_fstat64_old(fd, s); }
-int __compat_lstat64_new (const char *p, struct stat64 *s) { return __compat_lstat64_old(p, s); }
+/* pthread and math: old versions exist directly at GLIBC_2.2.5. */
+__asm__(".symver __compat_pthread_create, pthread_create@GLIBC_2.2.5");
+__asm__(".symver __compat_pthread_join,   pthread_join@GLIBC_2.2.5");
+__asm__(".symver __compat_pthread_once,   pthread_once@GLIBC_2.2.5");
+__asm__(".symver __compat_hypot,          hypot@GLIBC_2.2.5");
 
-/* ── pthread_create / pthread_join / pthread_once → GLIBC_2.34 ─────────── */
-/* In glibc 2.34 these moved from libpthread.so into libc.so.6.              */
+extern int    __compat_pthread_create(pthread_t *, const pthread_attr_t *, void *(*)(void *), void *);
+extern int    __compat_pthread_join  (pthread_t, void **);
+extern int    __compat_pthread_once  (pthread_once_t *, void (*)(void));
+extern double __compat_hypot         (double, double);
 
-extern int __compat_pthread_create_old(pthread_t *, const pthread_attr_t *,
-                                       void *(*)(void *), void *)
-    __asm__("pthread_create@GLIBC_2.2.5");
-extern int __compat_pthread_join_old(pthread_t, void **)
-    __asm__("pthread_join@GLIBC_2.2.5");
-extern int __compat_pthread_once_old(pthread_once_t *, void (*)(void))
-    __asm__("pthread_once@GLIBC_2.2.5");
+/* Export each newer-versioned symbol from this .so; delegate to old version. */
+__asm__(".symver __new_stat64,         stat64@@GLIBC_2.33");
+__asm__(".symver __new_fstat64,        fstat64@@GLIBC_2.33");
+__asm__(".symver __new_lstat64,        lstat64@@GLIBC_2.33");
+__asm__(".symver __new_pthread_create, pthread_create@@GLIBC_2.34");
+__asm__(".symver __new_pthread_join,   pthread_join@@GLIBC_2.34");
+__asm__(".symver __new_pthread_once,   pthread_once@@GLIBC_2.34");
+__asm__(".symver __new_hypot,          hypot@@GLIBC_2.35");
 
-__asm__(".symver __compat_pthread_create_new, pthread_create@GLIBC_2.34");
-__asm__(".symver __compat_pthread_join_new,   pthread_join@GLIBC_2.34");
-__asm__(".symver __compat_pthread_once_new,   pthread_once@GLIBC_2.34");
-
-int __compat_pthread_create_new(pthread_t *t, const pthread_attr_t *a,
-                                void *(*f)(void *), void *arg)
-    { return __compat_pthread_create_old(t, a, f, arg); }
-int __compat_pthread_join_new(pthread_t t, void **r)
-    { return __compat_pthread_join_old(t, r); }
-int __compat_pthread_once_new(pthread_once_t *o, void (*f)(void))
-    { return __compat_pthread_once_old(o, f); }
-
-/* ── hypot → GLIBC_2.35 ────────────────────────────────────────────────── */
-
-extern double __compat_hypot_old(double, double) __asm__("hypot@GLIBC_2.2.5");
-__asm__(".symver __compat_hypot_new, hypot@GLIBC_2.35");
-double __compat_hypot_new(double x, double y) { return __compat_hypot_old(x, y); }
+__attribute__((visibility("default"))) int    __new_stat64        (const char *p, struct stat64 *s)                                      { return __compat_xstat64(_STAT_VER, p, s);             }
+__attribute__((visibility("default"))) int    __new_fstat64       (int fd, struct stat64 *s)                                             { return __compat_fxstat64(_STAT_VER, fd, s);           }
+__attribute__((visibility("default"))) int    __new_lstat64       (const char *p, struct stat64 *s)                                      { return __compat_lxstat64(_STAT_VER, p, s);            }
+__attribute__((visibility("default"))) double __new_hypot         (double x, double y)                                                   { return __compat_hypot(x, y);                          }
+__attribute__((visibility("default"))) int    __new_pthread_create(pthread_t *t, const pthread_attr_t *a, void *(*f)(void *), void *arg) { return __compat_pthread_create(t, a, f, arg);         }
+__attribute__((visibility("default"))) int    __new_pthread_join  (pthread_t t, void **r)                                                { return __compat_pthread_join(t, r);                   }
+__attribute__((visibility("default"))) int    __new_pthread_once  (pthread_once_t *o, void (*f)(void))                                   { return __compat_pthread_once(o, f);                   }
 
 #endif /* linux x86-64 */
