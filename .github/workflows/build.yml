@@ -82,7 +82,7 @@ jobs:
           NPROC=$(nproc 2>/dev/null || sysctl -n hw.logicalcpu)
           PREFIX=$(pwd)/ffmpeg-build
           curl -fsSL https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-${{ env.LIBWEBP_VERSION }}.tar.gz -o libwebp.tar.gz
-          echo "${{ env.LIBWEBP_SHA256 }}  libwebp.tar.gz" | sha256sum -c -
+          echo "${{ env.LIBWEBP_SHA256 }}  libwebp.tar.gz" | (sha256sum -c - 2>/dev/null || shasum -a 256 -c -)
           tar xzf libwebp.tar.gz
           cd libwebp-${{ env.LIBWEBP_VERSION }}
           CFLAGS="-fPIC -flto" ./configure --prefix="$PREFIX" \
@@ -98,7 +98,7 @@ jobs:
           NPROC=$(nproc 2>/dev/null || sysctl -n hw.logicalcpu)
           PREFIX=$(pwd)/ffmpeg-build
           curl -fsSL https://ffmpeg.org/releases/ffmpeg-${{ env.FFMPEG_VERSION }}.tar.xz -o ffmpeg.tar.xz
-          echo "${{ env.FFMPEG_SHA256 }}  ffmpeg.tar.xz" | sha256sum -c -
+          echo "${{ env.FFMPEG_SHA256 }}  ffmpeg.tar.xz" | (sha256sum -c - 2>/dev/null || shasum -a 256 -c -)
           tar xJf ffmpeg.tar.xz
           cd ffmpeg-${{ env.FFMPEG_VERSION }}
           export PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
@@ -149,7 +149,7 @@ jobs:
         shell: msys2 {0}
         run: |
           curl -fsSL https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-${{ env.LIBWEBP_VERSION }}.tar.gz -o libwebp.tar.gz
-          echo "${{ env.LIBWEBP_SHA256 }}  libwebp.tar.gz" | sha256sum -c -
+          echo "${{ env.LIBWEBP_SHA256 }}  libwebp.tar.gz" | (sha256sum -c - 2>/dev/null || shasum -a 256 -c -)
           tar xzf libwebp.tar.gz
           cd libwebp-${{ env.LIBWEBP_VERSION }}
           CFLAGS=-flto ./configure --prefix=$(pwd)/../ffmpeg-build \
@@ -164,7 +164,7 @@ jobs:
         shell: msys2 {0}
         run: |
           curl -fsSL https://ffmpeg.org/releases/ffmpeg-${{ env.FFMPEG_VERSION }}.tar.xz -o ffmpeg.tar.xz
-          echo "${{ env.FFMPEG_SHA256 }}  ffmpeg.tar.xz" | sha256sum -c -
+          echo "${{ env.FFMPEG_SHA256 }}  ffmpeg.tar.xz" | (sha256sum -c - 2>/dev/null || shasum -a 256 -c -)
           tar xJf ffmpeg.tar.xz
           cd ffmpeg-${{ env.FFMPEG_VERSION }}
           export PKG_CONFIG_PATH="$(pwd)/../ffmpeg-build/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
