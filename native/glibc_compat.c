@@ -28,6 +28,7 @@
 #include <sys/stat.h>
 #include <pthread.h>
 #include <math.h>
+#include <dlfcn.h>
 
 /* _STAT_VER is the version tag passed to __xstat64/__lxstat64/__fxstat64.
  * On Linux/x86-64 it is always 1; glibc 2.33+ no longer exposes it publicly
@@ -74,5 +75,17 @@ __attribute__((visibility("default"))) double __new_hypot         (double x, dou
 __attribute__((visibility("default"))) int    __new_pthread_create(pthread_t *t, const pthread_attr_t *a, void *(*f)(void *), void *arg) { return __compat_pthread_create(t, a, f, arg);         }
 __attribute__((visibility("default"))) int    __new_pthread_join  (pthread_t t, void **r)                                                { return __compat_pthread_join(t, r);                   }
 __attribute__((visibility("default"))) int    __new_pthread_once  (pthread_once_t *o, void (*f)(void))                                   { return __compat_pthread_once(o, f);                   }
+
+/* dlsym and pthread_attr_setstacksize moved from libdl/libpthread into libc
+ * at glibc 2.34; their ABI is unchanged but the VERNEED tag changed.
+ * Use --wrap so every call in the linked objects uses the old GLIBC_2.2.5 tag. */
+__asm__(".symver __compat_dlsym,                    dlsym@GLIBC_2.2.5");
+__asm__(".symver __compat_pthread_attr_setstacksize, pthread_attr_setstacksize@GLIBC_2.2.5");
+
+extern void *__compat_dlsym(void *handle, const char *symbol);
+extern int   __compat_pthread_attr_setstacksize(pthread_attr_t *attr, size_t stacksize);
+
+void *__wrap_dlsym                    (void *handle, const char *symbol)           { return __compat_dlsym(handle, symbol);                      }
+int   __wrap_pthread_attr_setstacksize(pthread_attr_t *attr, size_t stacksize)     { return __compat_pthread_attr_setstacksize(attr, stacksize);  }
 
 #endif /* linux x86-64 */

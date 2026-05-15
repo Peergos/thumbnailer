@@ -107,5 +107,7 @@ if(UNIX AND NOT APPLE AND NOT MINGW)
     target_sources(thumbnailer PRIVATE ${_compat_src})
     target_link_libraries(thumbnailer PRIVATE m)
     target_link_options(thumbnailer PRIVATE
-        -Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/native/glibc_compat.map)
+        -Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/native/glibc_compat.map
+        -Wl,--wrap=dlsym
+        -Wl,--wrap=pthread_attr_setstacksize)
 endif()
