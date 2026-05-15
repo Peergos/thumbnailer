@@ -106,13 +106,10 @@ jobs:
           echo "${{ env.DAV1D_SHA256 }}  dav1d.tar.gz" | (sha256sum -c - 2>/dev/null || shasum -a 256 -c -)
           tar xzf dav1d.tar.gz
           cd dav1d-${{ env.DAV1D_VERSION }}
-          meson setup build --prefix="$PREFIX" --default-library=static --buildtype=release
+          meson setup build --prefix="$PREFIX" --libdir="$PREFIX/lib" --default-library=static --buildtype=release
           cd build && ninja -j$NPROC install
           # Create libdav1d.pc alias so cmake's pkg_check_modules(DAV1D libdav1d) finds it
-          find "$PREFIX" -name "dav1d.pc" -exec cp {} "$(dirname {})/libdav1d.pc" \;
-          # Ensure libdav1d.a is in the main lib dir for cmake find_library
-          find "$PREFIX" -name "libdav1d.a" ! -path "$PREFIX/lib/libdav1d.a" \
-            -exec cp {} "$PREFIX/lib/libdav1d.a" \; 2>/dev/null || true
+          cp "$PREFIX/lib/pkgconfig/dav1d.pc" "$PREFIX/lib/pkgconfig/libdav1d.pc"
 
       - name: Build FFmpeg (Linux/macOS)
         if: runner.os != 'Windows'
