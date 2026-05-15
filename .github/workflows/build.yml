@@ -76,16 +76,8 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install cmake pkg-config nasm
 
-      - name: Cache FFmpeg + libwebp build (Linux/macOS)
-        if: runner.os != 'Windows'
-        uses: actions/cache@v5
-        id: cache-ffmpeg
-        with:
-          path: ffmpeg-build
-          key: ffmpeg-${{ env.FFMPEG_VERSION }}-webp-${{ env.LIBWEBP_VERSION }}-${{ matrix.platform }}-v5
-
       - name: Build libwebp (Linux/macOS)
-        if: runner.os != 'Windows' && steps.cache-ffmpeg.outputs.cache-hit != 'true'
+        if: runner.os != 'Windows'
         run: |
           NPROC=$(nproc 2>/dev/null || sysctl -n hw.logicalcpu)
           PREFIX=$(pwd)/ffmpeg-build
@@ -101,7 +93,7 @@ jobs:
           make -j$NPROC install
 
       - name: Build FFmpeg (Linux/macOS)
-        if: runner.os != 'Windows' && steps.cache-ffmpeg.outputs.cache-hit != 'true'
+        if: runner.os != 'Windows'
         run: |
           NPROC=$(nproc 2>/dev/null || sysctl -n hw.logicalcpu)
           PREFIX=$(pwd)/ffmpeg-build
@@ -152,16 +144,8 @@ jobs:
             mingw-w64-x86_64-zlib
             make
 
-      - name: Cache FFmpeg + libwebp build (Windows)
-        if: runner.os == 'Windows'
-        uses: actions/cache@v5
-        id: cache-ffmpeg-win
-        with:
-          path: ffmpeg-build
-          key: ffmpeg-${{ env.FFMPEG_VERSION }}-webp-${{ env.LIBWEBP_VERSION }}-${{ matrix.platform }}-v5
-
       - name: Build libwebp (Windows)
-        if: runner.os == 'Windows' && steps.cache-ffmpeg-win.outputs.cache-hit != 'true'
+        if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
           curl -fsSL https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-${{ env.LIBWEBP_VERSION }}.tar.gz -o libwebp.tar.gz
@@ -176,7 +160,7 @@ jobs:
           make -j$(nproc) install
 
       - name: Build FFmpeg (Windows)
-        if: runner.os == 'Windows' && steps.cache-ffmpeg-win.outputs.cache-hit != 'true'
+        if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
           curl -fsSL https://ffmpeg.org/releases/ffmpeg-${{ env.FFMPEG_VERSION }}.tar.xz -o ffmpeg.tar.xz
