@@ -28,7 +28,6 @@
 #include <sys/stat.h>
 #include <pthread.h>
 #include <math.h>
-#include <dlfcn.h>
 
 /* _STAT_VER is the version tag passed to __xstat64/__lxstat64/__fxstat64.
  * On Linux/x86-64 it is always 1; glibc 2.33+ no longer exposes it publicly
@@ -76,16 +75,29 @@ __attribute__((visibility("default"))) int    __new_pthread_create(pthread_t *t,
 __attribute__((visibility("default"))) int    __new_pthread_join  (pthread_t t, void **r)                                                { return __compat_pthread_join(t, r);                   }
 __attribute__((visibility("default"))) int    __new_pthread_once  (pthread_once_t *o, void (*f)(void))                                   { return __compat_pthread_once(o, f);                   }
 
+#endif /* linux x86-64 */
+
 /* dlsym and pthread_attr_setstacksize moved from libdl/libpthread into libc
  * at glibc 2.34; their ABI is unchanged but the VERNEED tag changed.
- * Use --wrap so every call in the linked objects uses the old GLIBC_2.2.5 tag. */
-__asm__(".symver __compat_dlsym,                    dlsym@GLIBC_2.2.5");
-__asm__(".symver __compat_pthread_attr_setstacksize, pthread_attr_setstacksize@GLIBC_2.2.5");
+ * --wrap redirects all calls in linked objects through these wrappers, which
+ * call the old-versioned symbol (2.2.5 on x86_64, 2.17 on aarch64). */
+#if defined(__linux__) && (defined(__x86_64__) || defined(__aarch64__))
+#include <dlfcn.h>
+#include <pthread.h>
+
+# if defined(__x86_64__)
+#  define _GLIBC_BASE "GLIBC_2.2.5"
+# else
+#  define _GLIBC_BASE "GLIBC_2.17"
+# endif
+
+__asm__(".symver __compat_dlsym,                    dlsym@" _GLIBC_BASE);
+__asm__(".symver __compat_pthread_attr_setstacksize, pthread_attr_setstacksize@" _GLIBC_BASE);
 
 extern void *__compat_dlsym(void *handle, const char *symbol);
 extern int   __compat_pthread_attr_setstacksize(pthread_attr_t *attr, size_t stacksize);
 
-void *__wrap_dlsym                    (void *handle, const char *symbol)           { return __compat_dlsym(handle, symbol);                      }
-int   __wrap_pthread_attr_setstacksize(pthread_attr_t *attr, size_t stacksize)     { return __compat_pthread_attr_setstacksize(attr, stacksize);  }
+void *__wrap_dlsym                    (void *handle, const char *symbol)        { return __compat_dlsym(handle, symbol);                     }
+int   __wrap_pthread_attr_setstacksize(pthread_attr_t *attr, size_t stacksize)  { return __compat_pthread_attr_setstacksize(attr, stacksize); }
 
-#endif /* linux x86-64 */
+#endif /* linux x86_64 + aarch64 */
