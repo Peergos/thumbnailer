@@ -1,9 +1,22 @@
 <project name="thumbnailer" default="jar" basedir=".">
 
-    <property name="src.dir"       value="src"/>
-    <property name="build.dir"     value="build/classes"/>
-    <property name="resources.dir" value="resources"/>
-    <property name="jar.file"      value="thumbnailer.jar"/>
+    <property name="src.dir"         value="src"/>
+    <property name="test.src.dir"    value="test"/>
+    <property name="build.dir"       value="build/classes"/>
+    <property name="test.build.dir"  value="build/test-classes"/>
+    <property name="resources.dir"   value="resources"/>
+    <property name="jar.file"        value="thumbnailer.jar"/>
+    <property name="lib.dir"         value="lib"/>
+    <property name="test.reports"    value="build/test-reports"/>
+
+    <!-- JUnit jars checked in to lib/ -->
+    <path id="test.classpath">
+        <pathelement location="${build.dir}"/>
+        <pathelement location="${test.build.dir}"/>
+        <pathelement location="${jar.file}"/>
+        <pathelement location="${lib.dir}/junit-4.13.2.jar"/>
+        <pathelement location="${lib.dir}/hamcrest-core-1.3.jar"/>
+    </path>
 
     <target name="compile">
         <mkdir dir="${build.dir}"/>
@@ -18,6 +31,75 @@
             <fileset dir="${resources.dir}" includes="native/**"/>
         </jar>
         <echo message="Built ${jar.file}"/>
+    </target>
+
+    <!-- Copy the cmake-built native lib into resources/native so the jar includes it -->
+    <target name="copy-native">
+        <condition property="native.src"      value="build/thumbnailer.so">
+            <os name="Linux"/>
+        </condition>
+        <condition property="native.platform" value="linux-x86_64">
+            <and><os name="Linux"/><equals arg1="${os.arch}" arg2="amd64"/></and>
+        </condition>
+        <condition property="native.platform" value="linux-aarch64">
+            <and><os name="Linux"/><equals arg1="${os.arch}" arg2="aarch64"/></and>
+        </condition>
+        <condition property="native.src"      value="build/thumbnailer.dylib">
+            <os family="mac"/>
+        </condition>
+        <condition property="native.platform" value="macos-x86_64">
+            <and><os family="mac"/><equals arg1="${os.arch}" arg2="x86_64"/></and>
+        </condition>
+        <condition property="native.platform" value="macos-aarch64">
+            <and><os family="mac"/><equals arg1="${os.arch}" arg2="aarch64"/></and>
+        </condition>
+        <condition property="native.src"      value="build/thumbnailer.dll">
+            <os family="windows"/>
+        </condition>
+        <condition property="native.platform" value="windows-x86_64">
+            <and><os family="windows"/><equals arg1="${os.arch}" arg2="amd64"/></and>
+        </condition>
+        <condition property="native.lib.name" value="thumbnailer.so">
+            <os name="Linux"/>
+        </condition>
+        <condition property="native.lib.name" value="thumbnailer.dylib">
+            <os family="mac"/>
+        </condition>
+        <condition property="native.lib.name" value="thumbnailer.dll">
+            <os family="windows"/>
+        </condition>
+        <fail unless="native.src"      message="Unsupported OS for test: ${os.name}"/>
+        <fail unless="native.platform" message="Unsupported arch for test: ${os.arch}"/>
+        <mkdir dir="${resources.dir}/native/${native.platform}"/>
+        <copy file="${native.src}"
+              tofile="${resources.dir}/native/${native.platform}/${native.lib.name}"
+              failonerror="true"/>
+        <echo message="Copied ${native.src} → resources/native/${native.platform}/${native.lib.name}"/>
+    </target>
+
+    <target name="compile-test" depends="compile">
+        <mkdir dir="${test.build.dir}"/>
+        <javac srcdir="${test.src.dir}"
+               destdir="${test.build.dir}"
+               includeantruntime="false"
+               release="11">
+            <classpath>
+                <pathelement location="${build.dir}"/>
+                <pathelement location="${lib.dir}/junit-4.13.2.jar"/>
+                <pathelement location="${lib.dir}/hamcrest-core-1.3.jar"/>
+            </classpath>
+        </javac>
+    </target>
+
+    <!-- Build the jar (with native lib) then run all tests against it -->
+    <target name="test" depends="copy-native, jar, compile-test">
+        <mkdir dir="${test.reports}"/>
+        <java classname="org.junit.runner.JUnitCore"
+              fork="true"
+              failonerror="true">
+            <classpath refid="test.classpath"/>
+            <arg value="org.peergos.thumbnailer.ThumbnailerTest"/>
+        </java>
     </target>
 
     <target name="clean">

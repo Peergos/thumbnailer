@@ -19,8 +19,10 @@ env:
     --enable-avutil
     --enable-swscale
     --enable-swresample
-    --enable-decoder=h264,hevc,vp8,vp9,av1,mpeg4,mpeg2video,mjpeg,theora,vp6,flv,rv10,rv20,rv30,rv40,png,bmp,gif,tiff,webp
-    --enable-demuxer=mov,matroska,avi,mpeg,mpegts,ogg,flv,rm,asf,image2,gif,png_pipe,bmp_pipe,webp_pipe,tiff_pipe,avif
+    --enable-decoder=h264,hevc,vp8,vp9,av1,mpeg4,mpeg1video,mpeg2video,msmpeg4v3,mjpeg,theora,vp6,flv,rv10,rv20,rv30,rv40,png,bmp,gif,tiff,webp
+    --enable-demuxer=mov,matroska,avi,mpeg,mpegps,mpegts,ogg,flv,rm,asf,image2,gif,image_png_pipe,image_bmp_pipe,image_webp_pipe,image_tiff_pipe
+    --enable-parser=av1,h264,hevc,vp9,mpeg4video,mpegvideo,png,webp
+    --enable-bsf=av1_frame_merge
     --enable-protocol=file
     --enable-libwebp
     --enable-encoder=libwebp
@@ -70,11 +72,11 @@ jobs:
       # ── Linux / macOS ───────────────────────────────────────────────────────
       - name: Install build tools (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get install -y cmake pkg-config nasm
+        run: sudo apt-get install -y cmake pkg-config nasm ant
 
       - name: Install build tools (macOS)
         if: runner.os == 'macOS'
-        run: brew install cmake pkg-config nasm
+        run: brew install cmake pkg-config nasm ant
 
       - name: Build libwebp (Linux/macOS)
         if: runner.os != 'Windows'
@@ -188,6 +190,16 @@ jobs:
           mkdir -p resources/native/${{ matrix.platform }}
           cp build/thumbnailer.dll resources/native/${{ matrix.platform }}/
           strip resources/native/${{ matrix.platform }}/thumbnailer.dll
+
+      # ── run tests ───────────────────────────────────────────────────────────
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Run tests
+        run: ant test
 
       # ── upload native lib as artifact ────────────────────────────────────────
       - name: Upload native lib
