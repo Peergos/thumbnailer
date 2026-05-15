@@ -1,0 +1,7 @@
+/* Declare the version nodes that glibc_compat.c exports via .symver @@.
+ * Without these entries the linker rejects "version node not found".
+ * Symbols are assigned to nodes via the .symver directives in glibc_compat.c;
+ * all other symbols remain unversioned and are exported normally. */
+GLIBC_2.33 { };
+GLIBC_2.34 { };
+GLIBC_2.35 { };
