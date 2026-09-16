@@ -32,6 +32,17 @@ public class ThumbnailerTest {
     @Test public void testWebm()      { assertVideo("resources/video/sample.webm"); }
     @Test public void testWmv()       { assertVideo("resources/video/sample.wmv"); }
 
+    /** A video whose first seconds are black gets the first frame worth looking at, not the
+     *  black one: an all black 200px thumbnail is about 200 bytes, a real frame far more. */
+    @Test public void testSkipsBlackOpening() {
+        String path = "resources/video/starts-black.mp4";
+        Optional<byte[]> result = VideoThumbnailer.generateWebP(new File(path), 200);
+        Assert.assertTrue("No thumbnail for " + path, result.isPresent());
+        assertWebP(path, result.get());
+        Assert.assertTrue("Thumbnail of " + path + " looks blank: " + result.get().length + " bytes",
+                result.get().length > 600);
+    }
+
     private static void assertVideo(String path) {
         Optional<byte[]> result = VideoThumbnailer.generateWebP(new File(path), 200);
         Assert.assertTrue("No thumbnail for " + path, result.isPresent());

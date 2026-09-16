@@ -372,6 +372,82 @@ static jbyteArray encode_webp_image(JNIEnv *env, AVFrame *src_frame,
     return result;
 }
 
+/* ── video frame choice ───────────────────────────────────────────────────── */
+
+/* A frame is blank when 80% or more of it is near black or near white, which is the
+   test the web client uses: a title card or a fade is not worth a thumbnail. Sampled
+   on a small greyscale copy, so the cost does not depend on the video's resolution. */
+#define BLANK_SAMPLE 32
+#define BLANK_BLACK  7
+#define BLANK_WHITE  248
+
+static int frame_is_blank(AVFrame *frame)
+{
+    struct SwsContext *sws = sws_getContext(frame->width, frame->height, frame->format,
+                                            BLANK_SAMPLE, BLANK_SAMPLE, AV_PIX_FMT_GRAY8,
+                                            SWS_BILINEAR, NULL, NULL, NULL);
+    if (!sws) return 0;
+
+    uint8_t *grey = av_malloc(BLANK_SAMPLE * BLANK_SAMPLE);
+    if (!grey) { sws_freeContext(sws); return 0; }
+    uint8_t *dst[4] = { grey, NULL, NULL, NULL };
+    int dst_linesize[4] = { BLANK_SAMPLE, 0, 0, 0 };
+    int scaled = sws_scale(sws, (const uint8_t * const *)frame->data, frame->linesize,
+                           0, frame->height, dst, dst_linesize);
+    sws_freeContext(sws);
+    if (scaled <= 0) { av_free(grey); return 0; }
+
+    int black = 0, white = 0, total = BLANK_SAMPLE * BLANK_SAMPLE;
+    for (int i = 0; i < total; i++) {
+        if (grey[i] <= BLANK_BLACK) black++;
+        else if (grey[i] >= BLANK_WHITE) white++;
+    }
+    av_free(grey);
+    return black * 10 >= total * 8 || white * 10 >= total * 8;
+}
+
+/* Decodes the first frame at or after `seconds` into `frame`. Returns 1 on success. */
+static int decode_frame_at(AVFormatContext *fmt_ctx, AVCodecContext *dec_ctx, int vsi,
+                           int seconds, AVFrame *frame)
+{
+    AVStream *stream = fmt_ctx->streams[vsi];
+    int64_t ts = av_rescale_q((int64_t)seconds * AV_TIME_BASE, AV_TIME_BASE_Q, stream->time_base);
+    if (av_seek_frame(fmt_ctx, vsi, ts, AVSEEK_FLAG_BACKWARD) < 0)
+        return 0;
+    avcodec_flush_buffers(dec_ctx);
+
+    AVPacket *pkt = av_packet_alloc();
+    if (!pkt) return 0;
+    int got = 0;
+    /* counted in video packets, not packets: a file's audio would otherwise use up the budget
+       before the video reached the time we are seeking to */
+    int decoded = 0;
+    while (! got && decoded < 900) {
+        if (av_read_frame(fmt_ctx, pkt) < 0) break;
+        if (pkt->stream_index == vsi) {
+            decoded++;
+            if (avcodec_send_packet(dec_ctx, pkt) >= 0 && avcodec_receive_frame(dec_ctx, frame) >= 0) {
+                /* a seek lands on the keyframe before the time asked for, which on a video with
+                   sparse keyframes can be a long way before it: decode on to the frame we came
+                   for, or every candidate time comes back with the same early frame */
+                int64_t shown = frame->best_effort_timestamp;
+                if (shown != AV_NOPTS_VALUE && shown < ts)
+                    av_frame_unref(frame);
+                else
+                    got = 1;
+            }
+        }
+        av_packet_unref(pkt);
+    }
+    av_packet_free(&pkt);
+    return got;
+}
+
+/* Where to look for a frame worth showing. 1s in is where a thumbnail came from before
+   any of this, and is still what most videos get; the rest are for the ones that open on
+   a fade, a black screen or a title card. */
+static const int FRAME_CANDIDATE_SECONDS[] = { 1, 5, 10, 15, 20, 25, 30 };
+
 /* ── JNI entry points ─────────────────────────────────────────────────────── */
 
 JNIEXPORT jbyteArray JNICALL
@@ -380,11 +456,11 @@ Java_org_peergos_thumbnailer_VideoThumbnailer_generate(
 {
     const char *path = (*env)->GetStringUTFChars(env, jpath, NULL);
 
-    AVFormatContext *fmt_ctx   = NULL;
-    AVCodecContext  *dec_ctx   = NULL;
-    AVFrame         *src_frame = NULL;
-    AVPacket        *pkt       = NULL;
-    jbyteArray       result    = NULL;
+    AVFormatContext *fmt_ctx        = NULL;
+    AVCodecContext  *dec_ctx        = NULL;
+    AVFrame         *src_frame      = NULL;
+    AVFrame         *fallback_frame = NULL;
+    jbyteArray       result         = NULL;
 
     if (avformat_open_input(&fmt_ctx, path, NULL, NULL) < 0) goto cleanup;
     if (avformat_find_stream_info(fmt_ctx, NULL) < 0) goto cleanup;
@@ -402,30 +478,39 @@ Java_org_peergos_thumbnailer_VideoThumbnailer_generate(
     dec_ctx->thread_count = 1;
     if (avcodec_open2(dec_ctx, dec, NULL) < 0) goto cleanup;
 
-    int64_t one_sec = av_rescale_q(AV_TIME_BASE, AV_TIME_BASE_Q, stream->time_base);
-    av_seek_frame(fmt_ctx, vsi, one_sec, AVSEEK_FLAG_BACKWARD);
-    avcodec_flush_buffers(dec_ctx);
-
     src_frame = av_frame_alloc();
-    pkt       = av_packet_alloc();
-    if (!src_frame || !pkt) goto cleanup;
+    if (!src_frame) goto cleanup;
 
-    int got = 0;
-    for (int tries = 0; tries < 300 && !got; tries++) {
-        int ret = av_read_frame(fmt_ctx, pkt);
-        if (ret < 0) break;
-        if (pkt->stream_index == vsi) {
-            if (avcodec_send_packet(dec_ctx, pkt) >= 0)
-                got = (avcodec_receive_frame(dec_ctx, src_frame) >= 0);
+    /* A video that is blank wherever we look still gets a thumbnail: the first frame we
+       decoded is no worse than the nothing it had before. */
+    int64_t duration_secs = fmt_ctx->duration == AV_NOPTS_VALUE ? 0 : fmt_ctx->duration / AV_TIME_BASE;
+    int candidates = sizeof(FRAME_CANDIDATE_SECONDS) / sizeof(FRAME_CANDIDATE_SECONDS[0]);
+    int have_frame = 0;
+    for (int i = 0; i < candidates; i++) {
+        int at = FRAME_CANDIDATE_SECONDS[i];
+        if (i > 0 && duration_secs > 0 && at >= duration_secs)
+            break;
+        av_frame_unref(src_frame);
+        if (! decode_frame_at(fmt_ctx, dec_ctx, vsi, at, src_frame))
+            break;
+        if (! frame_is_blank(src_frame)) {
+            have_frame = 1;
+            break;
         }
-        av_packet_unref(pkt);
+        if (! fallback_frame)
+            fallback_frame = av_frame_clone(src_frame);
     }
-    if (!got) goto cleanup;
+    if (! have_frame) {
+        if (! fallback_frame) goto cleanup;
+        av_frame_free(&src_frame);
+        src_frame = fallback_frame;
+        fallback_frame = NULL;
+    }
 
     result = encode_webp_video(env, src_frame, (int)maxSize, rotation);
 
 cleanup:
-    if (pkt)       av_packet_free(&pkt);
+    if (fallback_frame) av_frame_free(&fallback_frame);
     if (src_frame) av_frame_free(&src_frame);
     if (dec_ctx)   avcodec_free_context(&dec_ctx);
     if (fmt_ctx)   avformat_close_input(&fmt_ctx);
