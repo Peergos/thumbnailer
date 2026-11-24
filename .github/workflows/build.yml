@@ -59,7 +59,7 @@ jobs:
             platform: macos-x86_64
             lib: thumbnailer.dylib
             extra_cflags: ""
-          - os: macos-14
+          - os: macos-15
             platform: macos-aarch64
             lib: thumbnailer.dylib
             extra_cflags: ""
