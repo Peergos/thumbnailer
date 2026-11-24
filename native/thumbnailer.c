@@ -27,19 +27,25 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved)
 /* ── orientation helpers ──────────────────────────────────────────────────── */
 
 /*
- * Read the EXIF orientation (1–8) from the stream's display matrix side data.
+ * Read the EXIF orientation (1–8) from the stream's display matrix side data,
+ * or, for a JPEG without one, from the decoded frame's, where ffmpeg's mjpeg
+ * decoder puts a JPEG's EXIF orientation. Other codecs' frame matrices are
+ * ignored: browsers ignore WebP EXIF, and ffmpeg can't tell a PNG eXIf before
+ * IDAT (which browsers apply) from one after it (which they ignore).
  * Returns 1 (normal) if no matrix is found.
  * The 2×2 top-left sign pattern maps unambiguously to each orientation.
  */
-static int get_exif_orientation(AVStream *stream)
+static int get_exif_orientation(AVStream *stream, const AVFrame *frame)
 {
     const AVPacketSideData *sd = av_packet_side_data_get(
         stream->codecpar->coded_side_data,
         stream->codecpar->nb_coded_side_data,
         AV_PKT_DATA_DISPLAYMATRIX);
-    if (!sd) return 1;
+    const AVFrameSideData *fsd = !sd && stream->codecpar->codec_id == AV_CODEC_ID_MJPEG ?
+        av_frame_get_side_data(frame, AV_FRAME_DATA_DISPLAYMATRIX) : NULL;
+    if (!sd && !fsd) return 1;
 
-    const int32_t *m = (const int32_t *)sd->data;
+    const int32_t *m = (const int32_t *)(sd ? sd->data : fsd->data);
     int a = m[0] > 0 ?  1 : m[0] < 0 ? -1 : 0;
     int b = m[1] > 0 ?  1 : m[1] < 0 ? -1 : 0;
     int c = m[3] > 0 ?  1 : m[3] < 0 ? -1 : 0;
@@ -536,7 +542,6 @@ Java_org_peergos_thumbnailer_VideoThumbnailer_generateImage(
     int vsi = av_find_best_stream(fmt_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
     if (vsi < 0) goto cleanup;
     AVStream *stream = fmt_ctx->streams[vsi];
-    int orientation = get_exif_orientation(stream);
 
     const AVCodec *dec = avcodec_find_decoder(stream->codecpar->codec_id);
     if (!dec) goto cleanup;
@@ -562,6 +567,7 @@ Java_org_peergos_thumbnailer_VideoThumbnailer_generateImage(
     }
     if (!got) goto cleanup;
 
+    int orientation = get_exif_orientation(stream, src_frame);
     result = encode_webp_image(env, src_frame, (int)maxSize, orientation);
 
 cleanup:
